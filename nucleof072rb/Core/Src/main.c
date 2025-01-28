@@ -19,12 +19,14 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "spi.h"
+#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -34,6 +36,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+	#define MCP3004_START_BIT 0x01 // Start bit for MCP3004 chanel 1 - single-ended communication
+	#define MCP3004_CHANNEL 0x80   // Single-ended channel 0 (0b1000 0000)
+	#define MCP3004_lastByte 0x00
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -55,6 +60,7 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+float map(int value, int scale1min, int scale1max, int scale2min, int scale2max);
 
 /* USER CODE END 0 */
 
@@ -64,6 +70,7 @@ void SystemClock_Config(void);
   */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -74,7 +81,10 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+	uint8_t spiTxData[3]; // Buffer for SPI transmission
+	uint8_t spiRxData[3]; // Buffer for SPI reception
+	uint16_t adcValue;    // Variable to store ADC value
+	float counts;    // Variable to store PWM value
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -87,7 +97,14 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
+  MX_SPI1_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
+
+	spiTxData[0] = MCP3004_START_BIT;
+	spiTxData[1] = MCP3004_CHANNEL;
+	spiTxData[2] = MCP3004_lastByte;
+
 
   /* USER CODE END 2 */
 
@@ -98,10 +115,37 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET); //setting cs pin low
+	  HAL_SPI_TransmitReceive(&hspi1, spiTxData, spiRxData, 3, 100); //sending 3 bytes and receiving 3
+	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+      adcValue = ((spiRxData[1] & 0x03) << 8) | spiRxData[2];
+
+      counts = map(adcValue, 0, 1023, 64000*.05, 64000*.1);
+      HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+      __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, counts);
+
+
+	  HAL_Delay(10);
   }
   /* USER CODE END 3 */
 }
 
+float map(int value, int scale1min, int scale1max, int scale2min, int scale2max)
+{
+  // Prevent division by zero in case scale1min equals scale1max
+	if (scale1min == scale1max)
+	{
+		return scale2min; // Return the minimum of the output range
+	}
+	int range1 = scale1max - scale1min;
+	int range2 = scale2max - scale1min;
+
+	//percent away from scale1 min value
+	float percent = (float)(value - scale1min)/range1;
+
+	// Perform the mapping
+	return scale2min + percent * range2;
+}
 /**
   * @brief System Clock Configuration
   * @retval None
@@ -122,6 +166,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+
   /** Initializes the CPU, AHB and APB buses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
@@ -177,5 +222,3 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
