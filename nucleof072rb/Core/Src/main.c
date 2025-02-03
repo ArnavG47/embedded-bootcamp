@@ -60,7 +60,7 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-float map(int value, int scale1min, int scale1max, int scale2min, int scale2max);
+int map(int value, int scale1min, int scale1max, int scale2min, int scale2max);
 
 /* USER CODE END 0 */
 
@@ -115,12 +115,17 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  const unsigned int tenBit = 1023; //max integer value 10 bits can hold
+	  const int counterPeriod = 64000;
+	  const float dutyMin = 0.05; //minimum duty cycle % for PWM
+	  const float dutyMax = 0.1; //maximum duty cycle % for PWM
+
 	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET); //setting cs pin low
 	  HAL_SPI_TransmitReceive(&hspi1, spiTxData, spiRxData, 3, 100); //sending 3 bytes and receiving 3
 	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
       adcValue = ((spiRxData[1] & 0x03) << 8) | spiRxData[2];
 
-      counts = map(adcValue, 0, 1023, 64000*.05, 64000*.1);
+      counts = map(adcValue, 0, tenBit, counterPeriod*dutyMin, counterPeriod*dutyMax);
       HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
       __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, counts);
 
@@ -130,7 +135,7 @@ int main(void)
   /* USER CODE END 3 */
 }
 
-float map(int value, int scale1min, int scale1max, int scale2min, int scale2max)
+int map(int value, int scale1min, int scale1max, int scale2min, int scale2max)
 {
   // Prevent division by zero in case scale1min equals scale1max
 	if (scale1min == scale1max)
@@ -141,7 +146,7 @@ float map(int value, int scale1min, int scale1max, int scale2min, int scale2max)
 	int range2 = scale2max - scale1min;
 
 	//percent away from scale1 min value
-	float percent = (float)(value - scale1min)/range1;
+	int percent = (value - scale1min)/range1;
 
 	// Perform the mapping
 	return scale2min + percent * range2;
